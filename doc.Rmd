@@ -1,0 +1,255 @@
+---
+title: "Détermination du nombre optimal des classes"
+author: "Jguirim Nawres Alfahem Rihab  Smii Faouzi"
+date: "11 decembre 2017"
+output:  word_document
+---
+# Plan
+
+# I. Introduction 
+Parfois choisir le bon nombre  de classe pour un modéle de classification peut etre problématique, pour cela le but de notre projet est de construire une fonction qui facilite cette tache, en retournant l'indice de rand et le meilleur nombre de classe; cette fonction prend comme paramétre les données, nombre de classe minimale et maximale, la méthode de bruitage , le taux et le nombre d'echontillonage. Dans ce rapport on va expliquer les étapes de construction de cette fonction,  la tester sur un 4 jeux de données differents et interpreter les résultats.
+
+# II. jeu de donnée
+## 1ér jeu de donnée "iris"
+```{r}
+data("iris")
+head(iris)
+```
+## 2 éme  jeu de donneés simulé
+On a  simulé  trois  bivariates  distributions , ensuite on  les a concatenné dans une table, et après on la projet dans une plot. 
+```{r}
+#simulation population 1
+#function simuttion population with 3 different bivariate distribution 
+gaussianPop=function(N, mu1,mu2, mu3,  sigma){
+  library(MASS)
+  bvn1 <- mvrnorm(N, mu = mu1, sigma )
+  bvn2 <- mvrnorm(N, mu = mu2, sigma  )
+  bvn3 <- mvrnorm(N, mu = mu3, sigma  )
+  base=rbind.data.frame(bvn1, bvn2, bvn3)
+  colnames(base) <- c("X","Y")
+  return(base)
+}
+# Parameters for bivariate normal distribution
+N=100
+mu1 <- c(0,0) # Mean
+mu2 <- c(0,4) # Mean
+mu3 <- c(4,0) # Mean)
+# Covariance matrix
+sigma <- matrix(c(0.2,0,0,0.3),  2)
+base1=gaussianPop(N, mu1,mu2, mu3, sigma)
+head(base1)
+plot(base1)
+
+```
+
+On visualse clairement qu'on a 3 classes à detecter. 
+Le but de ce jeu de données est de verifier si la fonction  retourne 3 comme meilleur nombre de classes.
+## 3 éme  jeu de donneés simulé
+ De meme, on  refait la simulation mais cette fois en rapprochant les deux moyennes à l'origine , le but de cette distribution est de verifié si l'indice de rand se diminu ou pas.
+```{r}
+#simulation population 2 , on rapproche les moyennes 
+mu11 <- c(0,0) # Mean
+mu22 <- c(0,2) # Mean
+mu33<- c(2,0) # Mean
+ # Covariance matrix
+sigma <- matrix(c(0.2,0,0,0.3),  2)
+base2=gaussianPop(N, mu11 ,mu22 , mu33,  sigma)
+plot(base2)
+
+```
+##4 éme jeu de données simulé
+De la meme maniére, juste cette fois, on simule deux gaussiénnes ,  le but de cette distribution est de verifié si la fonction retourne la  2 classes.
+```{r}
+#####  simulation population deux gaussienne 
+mu1 <- c(0,0) # Mean
+mu2 <- c(4,4) # Mean
+ # Covariance matrix
+sigma <- matrix(c(0.2,0,0,0.3),  2)
+bvn1 <- mvrnorm(N, mu = mu1, Sigma = sigma )
+bvn2 <- mvrnorm(N, mu = mu2, Sigma = sigma )
+towGauss=rbind.data.frame(bvn1, bvn2)
+colnames(towGauss) <- c("X","Y")
+plot(towGauss)
+```
+# III. La fonction
+ 
+##1. La fonction d'echontillonage
+Parmis les paramétres qu'on aura besoin dans la fonction finale, c'est la méthode de bruitage , alors on a construit cette fonction qui retourne une table  d'échontillon de le population , en précison la position des individus dans la population
+pop: c'est la table mére
+tau: au d'echontillonage
+method: méthode de buitage "avec remise", " sans remise","strat"
+
+
+
+##2. La table de classification
+Le but de cette fonction est de  retouner la table contenant la classification , de l'echontillon , et de la population.  On a utilisé la méthode Kmeans pour la classification, et on a choisi l'algorithme par defaut  Hartigan-Wong parce qu'il converge rapidement .
+```{r}
+
+clusterTable=function(x, tau, k , method  , algo){
+  library(splitstackshape)
+  library( dplyr)
+  if (method=="sans remise")  xEch =  sample_n(x, round(nrow(x)*tau), replace= FALSE)
+  if (method=="avec remise") xEch =  sample_n(x, round(nrow(x)*tau), replace= TRUE) 
+  if (algo=="kmeans") {
+    res1=kmeans(x, k, iter.max = 40, nstart = 4, algorithm = "Hartigan-Wong", trace=FALSE)
+  #plot(x, col = res1$cluster)
+ # points(res1$centers, pch = 8, cex = 2)
+  if (method== "strat") { 
+    x= cbind(x,c(1:nrow(x)),res1$cluster) 
+    xEch=stratified(x ,colnames(x)[ ncol(x)], tau )
+    nam =xEch$`c(1:nrow(x))`
+    n=ncol(xEch)-2
+    xEch=xEch[,c(1:n), with=FALSE]
+     rownames(xEch)=NULL
+    rownames(xEch)=nam
+    }
+  res2=kmeans(xEch, k, iter.max = 40, nstart = 4, algorithm = "Hartigan-Wong", trace=FALSE)
+  a=as.data.frame (res2$cluster)
+  b=as.data.frame (res1$cluster)
+  a=cbind(as.numeric((rownames(xEch))),a)
+  b=cbind(as.numeric((rownames(b))),b )
+  ab=data.frame(rep(0,nrow(xEch)),rep(0,nrow(xEch)))
+  for (i in 1 : nrow(xEch)){
+  ab[i,]=b[a[i,1],] }
+  ab=cbind.data.frame(ab,a[,2])
+  colnames(ab)=c( "ind","cluster pop", "cluster ech")  }
+
+  if(algo=="hclust"){
+    res1=hclust(dist(x)^2)
+    c1=cutree(res1, k)
+  if ( method=="strat") {
+    x= cbind(x,c(1:nrow(x)),c1) 
+    xEch=stratified(x ,colnames(x)[ ncol(x)], tau )
+    nam =xEch$`c(1:nrow(x))`
+    n=ncol(xEch)-2
+    xEch=xEch[,c(1:n), with=FALSE]
+    rownames(xEch)=NULL
+    rownames(xEch)=nam
+  }
+    res2=hclust(dist(xEch)^2)
+    c2=cutree(res2, k)
+    a=as.data.frame (c2)
+    b=as.data.frame (c1)
+    a=cbind(as.numeric((rownames(xEch))),a)
+    b=cbind(as.numeric((rownames(b))),b )
+    ab=data.frame(rep(0,nrow(xEch)),rep(0,nrow(xEch)))
+    for (i in 1 : nrow(xEch)){
+      ab[i,]=b[a[i,1],] }
+    ab=cbind.data.frame(ab,a[,2])
+    colnames(ab)=c( "ind","cluster pop", "cluster ech")
+    }
+  
+  return(ab)}
+
+```
+
+
+
+##3. Calcule de l'indice de  rand
+Dans cette fonction  on a utilisé le package ClustOVar et fossil,qui nous ont fournient 3 indices de rands, l'un de d'eux est ajuster,  le but c'est de faire une comparaison ces indices. La fonction nous retour la moyenne des indices 
+k:nombre de classes 
+nbEch: nombre d'echontillonnage 
+```{r}
+
+listInd= function(pop,tau , k, nbEch ,method, algo){
+  index=matrix(c(0,0,0),1)
+  colnames(index)=c("clustOfVar","fossil", "adj.rand.fossil")
+  library(mclust)
+  library(ClustOfVar)
+  library(fossil)
+  for (j in 1:nbEch) {
+    cc=clusterTable(pop,tau , k , method, algo )
+    adj.indx=adjustedRandIndex(cc[,3], cc[,2])
+    indx1=rand(cc[,3], cc[,2])
+    indx2=rand.index(cc[,3], cc[,2])
+    index[1]= (index[1]+ indx1)
+    index[2]= (index[2]+ indx2)
+    index[3]=(index[3]+ adj.indx)}
+  index[1]= (index[1]/nbEch)
+  index[2]= (index[2]/nbEch)
+  index[3]=(index[3]/nbEch)
+  print("la moyenne des indices ")
+  print(index)
+  return(index)
+}
+```
+
+
+##4. La fonction finale Validation
+```{r}
+validation=function(pop,tau , kmin , kmax ,  nbEch, method, algo){
+  cat("la  methode d'echontillonage est: ", method, " de taux ",tau ,"\n", " pour kmin= ", kmin, " et kmax= ", kmax, "\n\n")
+  cat("Pour K= ", kmin, "\n")
+  bestIndex=listInd( pop,tau , kmin,  nbEch, method, algo)
+  kList=matrix(c(kmin,kmin,kmin),1)
+  for (i in (kmin+1) : kmax ){ 
+    cat("Pour K= ", i, "\n")
+    index=listInd(pop,tau , i,  nbEch, method, algo)
+    if ( bestIndex[1]< index[1] ) {  bestIndex[1]=index[1]
+    kList[1]=i  }   
+    if ( bestIndex[2]< index[2] ) { bestIndex[2]=index[2]
+    kList[2]=i}    
+    if ( bestIndex[3]< index[3] ) { bestIndex[3]=index[3]
+    kList[3]=i} 
+  }
+  bestIndex=rbind(bestIndex ,as.integer( kList))
+  rownames(bestIndex)=c("Meilleur indice ", "Meilleur nombres de classes")
+  return(bestIndex)
+}
+
+```
+
+# IV. Test
+ Maintenant on va tester par les 4 jeux de données pour verifié si la fonction nous retourne le meilleur nombre de classe ou pas.
+##1. iris 
+```{r}
+validation(iris[,-5], .8, 2,8, 100, "strat" ,"hclust")
+```
+```{r}
+validation(iris[,-5], .8, 2,9, 100, "strat" ,"kmeans")
+
+validation(iris[,-5], .8, 2,9, 100, "avec remise" ,"hclust")
+validation(iris[,-5], .8, 2,9, 100, "sans remise" ,"hclust")
+validation(iris[,-5], .8, 2,9, 100, "avec remise" ,"kmeans")
+validation(iris[,-5], .8, 2,9, 100, "sans remise" ,"kmeans")
+```
+
+Interpretation: On voit que le meilleur nombre de  classe est 2 pour la table iris,avec un indice de rand égal à 1
+
+##2. base 1
+```{r}
+validation(base1, .8, 2,9, 100, "strat" ,"hclust")
+validation(base1, .8, 2,9, 100, "strat" ,"kmeans")
+validation(base1, .8, 2,9, 100, "sans remise" ,"kmeans")
+validation(base1, .8, 2,9, 100, "avec remise" ,"kmeans")
+
+```
+Interpretation: Pour ce jeu de données artficiel, les 3 indices de rand confirme le meilleur nombre de classes : 3, alors on peut conclure que l'algorithme audessous fonctionne convenablement.
+
+
+ 
+##3. base 2
+```{r}
+validation(base2, .8, 2,9, 100, "strat" ,"hclust")
+validation(base2, .8, 2,9, 100, "strat" ,"kmeans")
+validation(base2, .8, 2,9, 100, "sans remise" ,"kmeans")
+validation(base2, .8, 2,9, 100, "avec remise" ,"kmeans")
+
+```
+Interpretation: Pour ce jeu de données , on a rapproché les moyennes de chaque Gaussienne , pour voir  si les valeur des indices diminuent. Effectivelent, les valeurs passent de 1 à 0.95 , et l'indice fossile est un peu plus  grande (0.976)
+
+
+##4. towGauss
+```{r}
+validation(towGauss, .8, 2,9, 100, "strat" ,"hclust")
+validation(towGauss, .8, 2,9, 100, "strat" ,"kmeans")
+validation(towGauss, .8, 2,9, 100, "sans remise" ,"kmeans")
+validation(towGauss, .8, 2,9, 100, "avec remise" ,"kmeans")
+
+```
+Interpretation: cette partie pour bien confirmer si la fonction "validation" donne le  meilleur nombre de classe  
+ 
+#V.  Conclusion
+
+les 3 indice donne le meme nombre de classe
+l'indice de rand fossil ajusté  et l'indice du package clasOfVar  pour ces 4 table donnent presque la meme valeur, l'indice fossil se differe d'eux, il a tendence à gonfler le resultat pour  un mauvais classement, on peut etre  expliqué ca par le fait que ce package (fossil) est dédié  au analyse  des base des données écologique  et géographique, 
